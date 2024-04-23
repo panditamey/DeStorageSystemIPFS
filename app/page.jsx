@@ -12,6 +12,8 @@ import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { set } from 'firebase/database';
 import CryptoJS from 'crypto-js';
+import axios from 'axios';
+
 
 
 export default function Home() {
@@ -71,34 +73,84 @@ export default function Home() {
       return;
     }
     setFetched(false);
-    const storage = new Web3Storage({ token: process.env.NEXT_PUBLIC_WEB3_STORAGE_TOKEN });
-    // const fileData = await getFilesFromPath(image);
-    // const cid = await storage.put(formData);
-    // console.log(cid);
-    console.log(image);
+
+    const formData = new FormData();
+    const JWT = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySW5mb3JtYXRpb24iOnsiaWQiOiIzNGIxNzc2OC03MzY5LTQzN2ItOGEzNS02YTk3MmJjZWU2NDMiLCJlbWFpbCI6ImdlcGVsaTcyODBAZHhpY2UuY29tIiwiZW1haWxfdmVyaWZpZWQiOnRydWUsInBpbl9wb2xpY3kiOnsicmVnaW9ucyI6W3siaWQiOiJGUkExIiwiZGVzaXJlZFJlcGxpY2F0aW9uQ291bnQiOjF9LHsiaWQiOiJOWUMxIiwiZGVzaXJlZFJlcGxpY2F0aW9uQ291bnQiOjF9XSwidmVyc2lvbiI6MX0sIm1mYV9lbmFibGVkIjpmYWxzZSwic3RhdHVzIjoiQUNUSVZFIn0sImF1dGhlbnRpY2F0aW9uVHlwZSI6InNjb3BlZEtleSIsInNjb3BlZEtleUtleSI6ImNhM2RmZjFhNzI1Yzc3NWYyYTA4Iiwic2NvcGVkS2V5U2VjcmV0IjoiM2UxMGM5YTkyM2YyMGExYjdmMmFhZjhiZmNhMjQ2NWZlZmE0ZDQ0NGNiNzNkMDM2NzcxNmIxZmQzMzI2MGE1NyIsImlhdCI6MTcxMzg2MTk3OH0.0j80IgEBwarUc7yxJWJK62u_CU239BuQ6kD1UmwN1Lc"
+
+    // const file = fs.createReadStream(image);
     const aesen = AESEncryption(image);
     const ext = image.name.split('.').pop();
     const fileName = `${uuidv4()}.${ext}`;
-    const newFile = new File([image], fileName+aesen, { type: image.type });
+    // const newFile = new File([image], fileName + aesen, { type: image.type });
+    formData.append('file', image)
+
+    const pinataMetadata = JSON.stringify({
+      name: 'File name',
+    });
+    formData.append('pinataMetadata', pinataMetadata);
+
+    const pinataOptions = JSON.stringify({
+      cidVersion: 0,
+    })
+    formData.append('pinataOptions', pinataOptions);
+
     try {
-      const cid = await storage.put([newFile]);
-      console.log(`IPFS CID: ${cid}`)
-      console.log(`Gateway URL: https://dweb.link/ipfs/${cid}`)
-      console.log(`https://${cid}.ipfs.w3s.link/${fileName+aesen}`)
+      const res = await axios.post("https://api.pinata.cloud/pinning/pinFileToIPFS", formData, {
+        maxBodyLength: "Infinity",
+        headers: {
+          'Content-Type': `multipart/form-data; boundary=${formData._boundary}`,
+          'Authorization': `Bearer ${JWT}`
+        }
+      });
+      console.log(res.data);
+      const data = res.data;
+      const hash = data.IpfsHash;
+      console.log(hash);
+      console.log(`https://amethyst-decisive-coral-643.mypinata.cloud/ipfs/${hash}`);
       try {
         await setDoc(doc(db, "images", fileName), {
-          cid: cid,
+          cid: hash,
           name: fileName,
-          url: `https://${cid}.ipfs.w3s.link/${fileName+aesen}`
+          url: `https://amethyst-decisive-coral-643.mypinata.cloud/ipfs/${hash}`
         });
         setAlldocs([]);
         fetchImages();
       } catch (e) {
         console.error("Error adding document: ", e);
       }
+    } catch (error) {
+      console.log(error);
     }
-    catch (e) {
-      console.log(e);
+    if (false) {
+      const storage = new Web3Storage({ token: process.env.NEXT_PUBLIC_WEB3_STORAGE_TOKEN });
+      // const fileData = await getFilesFromPath(image);
+      // const cid = await storage.put(formData);
+      // console.log(cid);
+      console.log(image);
+      const aesen = AESEncryption(image);
+      const ext = image.name.split('.').pop();
+      const fileName = `${uuidv4()}.${ext}`;
+      const newFile = new File([image], fileName + aesen, { type: image.type });
+      try {
+        const cid = await storage.put([newFile]);
+        console.log(`IPFS CID: ${cid}`)
+        console.log(`Gateway URL: https://dweb.link/ipfs/${cid}`)
+        console.log(`https://${cid}.ipfs.w3s.link/${fileName + aesen}`)
+        try {
+          await setDoc(doc(db, "images", fileName), {
+            cid: cid,
+            name: fileName,
+            url: `https://${cid}.ipfs.w3s.link/${fileName + aesen}`
+          });
+          setAlldocs([]);
+          fetchImages();
+        } catch (e) {
+          console.error("Error adding document: ", e);
+        }
+      }
+      catch (e) {
+        console.log(e);
+      }
     }
   }
   return (
@@ -116,7 +168,7 @@ export default function Home() {
               return (
                 <div className='m-5'>
                   <Image src={doc.url} alt={doc.name} width={500} height={500} onClick={() => {
-                    window.open("https://"+ doc.cid +".ipfs.w3s.link/", "_blank")
+                    window.open(doc.url, "_blank")
                   }} />
                   {/* <p className='text-xs'>CID: {doc.cid}</p> */}
                   <p className='text-xs'>{doc.name}</p>
